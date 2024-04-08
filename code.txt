@@ -1,0 +1,60 @@
+#Importing the required packages.
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics import accuracy_score
+
+#Reading the data
+key = pd.read_excel('dxcode.xlsx')
+sentence = pd.read_excel('proc.xlsx')
+
+df = pd.read_excel('proc2.xlsx')
+key['keyword'] = key['keyword'].str.rstrip()
+cols_target = list(key['keyword'])
+
+#Converting Text data into feature vectors
+vec = TfidfVectorizer(ngram_range=(1,2), max_df=0.9)
+X_dtm = vec.fit_transform(df['Order Procedure'])
+
+#Initialising object for Logistic Regression
+logreg = LogisticRegression(C=12.0)
+
+#Initialising prdictions array
+preds = np.zeros((len(df), len(cols_target)))
+
+#Used Classifier chains to convert multi label problem into single label problem
+def add_feature(X, feature_to_add):
+
+    #Returns sparse feature matrix with added feature.
+    
+    from scipy.sparse import csr_matrix, hstack
+    return hstack([X, csr_matrix(feature_to_add).T], 'csr')
+
+for i,label in enumerate(cols_target):
+    if df[label].sum()>0:
+        
+        print('... Processing {}'.format(label))
+        y = df[label]
+        # train the model using X_dtm & y
+        logreg.fit(X_dtm,y)
+        # compute the training accuracy
+        y_pred_X = logreg.predict(X_dtm)
+        print('Training Accuracy is {}'.format(accuracy_score(y,y_pred_X)))
+        
+        preds[:,i] = logreg.predict_proba(X_dtm)[:,1]
+        # chain current label to X_dtm
+        X_dtm = add_feature(X_dtm, y)
+        print('Shape of X_dtm is now {}'.format(X_dtm.shape))
+    
+#To prepare a dataframe with the obtained Predictions
+submid = pd.DataFrame({'Procedure': df['Order Procedure']})
+submission = pd.concat([submid, pd.DataFrame(preds, columns = cols_target)], axis=1)
+columns = ['Procedure']
+columns.extend(list(key['code']))
+submission.columns = columns
+
+#To print respective code for the keyword
+for j,lab in enumerate(submission['Procedure']):
+    print(lab)
+    print(list(submission.iloc[:,1:].columns[(submission.iloc[:,1:] > 0.5).iloc[j]]))
